@@ -1,0 +1,48 @@
+{
+  "dataset_name": "mail_resource",
+  "engine": "rules",
+  "engine_label": "字段规则引擎",
+  "dirty_path": "F:\\ai-code\\raha\\raha-master\\datasets\\mail_resource\\dirty.csv",
+  "clean_path": "F:\\ai-code\\raha\\raha-master\\datasets\\mail_resource\\clean.csv",
+  "repaired_path": "F:\\ai-code\\raha\\raha-master\\datasets\\mail_resource\\repaired.csv",
+  "rows": 1000,
+  "columns": 17,
+  "actual_error_cells": 6800,
+  "actual_error_rate": 0.4,
+  "detected_cells": 5952,
+  "corrected_cells": 5952,
+  "labeling_budget": 0,
+  "algorithms": [
+    "字段格式校验",
+    "枚举值域校验",
+    "离线同位修复"
+  ],
+  "detection_seconds": 1.2108757495880127,
+  "correction_seconds": 0.0004923343658447266,
+  "baseline_metrics": {
+    "detection_precision": 1.0,
+    "detection_recall": 1.0,
+    "detection_f1": 1.0,
+    "correction_precision": 1.0,
+    "correction_recall": 1.0,
+    "correction_f1": 1.0
+  },
+  "detection_metrics": {
+    "detection_precision": 1.0,
+    "detection_recall": 0.8752941176470588,
+    "detection_f1": 0.9335006273525721,
+    "correction_precision": 1.0,
+    "correction_recall": 0.8752941176470588,
+    "correction_f1": 0.9335006273525721
+  },
+  "correction_metrics": {
+    "detection_precision": 1.0,
+    "detection_recall": 0.8752941176470588,
+    "detection_f1": 0.9335006273525721,
+    "correction_precision": 1.0,
+    "correction_recall": 0.8752941176470588,
+    "correction_f1": 0.9335006273525721
+  },
+  "detection_method_name": "字段规则检测结果",
+  "correction_method_name": "字段规则修复结果"
+}

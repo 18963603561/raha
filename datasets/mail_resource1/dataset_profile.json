@@ -1,0 +1,33 @@
+{
+  "dataset_name": "mail_resource1",
+  "source_path": "F:\\ai-code\\raha\\raha-master\\doc\\20260709\\sample-NB_MASS_RESOURCE_MAIL-邮件信息-v1.6.2-e1.2-202603251541300550.xls",
+  "rows": 1000,
+  "columns": 17,
+  "target_error_rate": 0.4,
+  "actual_error_cells": 6667,
+  "actual_error_rate": 0.392176,
+  "real_only": true,
+  "candidate_non_empty_cells": 6667,
+  "selected_columns": [
+    "源IP",
+    "源IPv6",
+    "上网认证帐号",
+    "上网认证类型",
+    "域名",
+    "IMEI",
+    "IMSI",
+    "用户ID",
+    "用户名",
+    "邮件中发件人信息",
+    "邮件中收件人信息",
+    "数据来源",
+    "截获时间",
+    "关联纬度",
+    "关联经度",
+    "基站编号",
+    "基站类型"
+  ],
+  "clean_path": "F:\\ai-code\\raha\\raha-master\\datasets\\mail_resource1\\clean.csv",
+  "dirty_path": "F:\\ai-code\\raha\\raha-master\\datasets\\mail_resource1\\dirty.csv",
+  "manifest_path": "F:\\ai-code\\raha\\raha-master\\datasets\\mail_resource1\\dirty_error_manifest.csv"
+}
