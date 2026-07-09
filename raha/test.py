@@ -15,13 +15,13 @@ def main():
     detected_cells = detector.run(dataset_dictionary)
 
     data = raha.Dataset(dataset_dictionary)
-    print(data)
+    print("1==="+detected_cells)
     data.detected_cells = detected_cells
 
     corrector = raha.Correction()
     corrector.LABELING_BUDGET = 5
     corrected_cells = corrector.run(data)
-
+    print("1==="+corrected_cells)
     data.create_repaired_dataset(corrected_cells)
     output_path = os.path.abspath(os.path.join("datasets", dataset_name, "repaired.csv"))
     data.write_csv_dataset(output_path, data.repaired_dataframe)

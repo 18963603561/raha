@@ -121,7 +121,7 @@ class Detection:
         # 标签传播方式：homogeneity 要求簇内已标注样本一致，majority 使用多数投票。
         self.LABEL_PROPAGATION_METHOD = "homogeneity"   # ["homogeneity", "majority"]
         # 基础错误检测策略集合：OD 异常值、PVD 模式违规、RVD 规则违规、KBVD 知识库违规。
-        self.ERROR_DETECTION_ALGORITHMS = ["OD", "PVD", "RVD", "KBVD"]   # ["OD", "PVD", "RVD", "KBVD", "TFIDF"]
+        self.ERROR_DETECTION_ALGORITHMS = ["OD", "PVD", "RVD"]   # ["OD", "PVD", "RVD", "KBVD", "TFIDF"]
         # 历史数据集配置列表，仅在 STRATEGY_FILTERING 开启时参与策略筛选。
         self.HISTORICAL_DATASETS = []
 
