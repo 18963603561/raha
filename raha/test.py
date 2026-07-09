@@ -15,6 +15,7 @@ def main():
     detected_cells = detector.run(dataset_dictionary)
 
     data = raha.Dataset(dataset_dictionary)
+    print(data)
     data.detected_cells = detected_cells
 
     corrector = raha.Correction()
