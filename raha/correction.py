@@ -150,6 +150,8 @@ class Correction:
         self.PRETRAINED_VALUE_BASED_MODELS_PATH = ""
         # 值编码方式：identity 保留字符本身，unicode 使用字符类别抽象；默认两者互补使用。
         self.VALUE_ENCODINGS = ["identity", "unicode"]
+        # 是否启用基于同一行邻近上下文的候选修复模型；关闭后仅使用值模型和列值域模型。
+        self.USE_VICINITY_BASED_MODEL = True
         # 候选修复二分类模型；可选 ABC、DTC、GBC、GNB、KNC、SGDC、SVC。
         self.CLASSIFICATION_MODEL = "ABC"   # ["ABC", "DTC", "GBC", "GNB", "KNC" ,"SGDC", "SVC"]
         # 分类器支持 decision_function 时，是否使用置信度选择最可信的候选修复。
@@ -587,22 +589,28 @@ class Correction:
             d.value_models = pickle.load(bz2.BZ2File(self.PRETRAINED_VALUE_BASED_MODELS_PATH, "rb"))
             if self.VERBOSE:
                 print("The pretrained value-based models are loaded.")
-        d.vicinity_models = {j: {jj: {} for jj in range(d.dataframe.shape[1])} for j in range(d.dataframe.shape[1])}
+        d.vicinity_models = {}
+        if self.USE_VICINITY_BASED_MODEL:
+            # 邻近上下文模型按“上下文列 -> 目标列”维护统计映射，关闭开关时不分配该结构。
+            d.vicinity_models = {j: {jj: {} for jj in range(d.dataframe.shape[1])} for j in range(d.dataframe.shape[1])}
         d.domain_models = {}
         for row in d.dataframe.itertuples():
             i, row = row[0], row[1:]
-            vicinity_list = [cv if (i, cj) not in d.detected_cells else self.IGNORE_SIGN for cj, cv in enumerate(row)]
+            if self.USE_VICINITY_BASED_MODEL:
+                # 已检测为错误的上下文值不能作为邻近模型信号，避免把脏值学习进去。
+                vicinity_list = [cv if (i, cj) not in d.detected_cells else self.IGNORE_SIGN for cj, cv in enumerate(row)]
             for j, value in enumerate(row):
                 if (i, j) not in d.detected_cells:
                     # 只用未检测为错误的单元格初始化上下文和列值域模型，降低脏值污染。
-                    temp_vicinity_list = list(vicinity_list)
-                    temp_vicinity_list[j] = self.IGNORE_SIGN
                     update_dictionary = {
                         "column": j,
                         "new_value": value,
-                        "vicinity": temp_vicinity_list
                     }
-                    self._vicinity_based_models_updater(d.vicinity_models, update_dictionary)
+                    if self.USE_VICINITY_BASED_MODEL:
+                        temp_vicinity_list = list(vicinity_list)
+                        temp_vicinity_list[j] = self.IGNORE_SIGN
+                        update_dictionary["vicinity"] = temp_vicinity_list
+                        self._vicinity_based_models_updater(d.vicinity_models, update_dictionary)
                     self._domain_based_model_updater(d.domain_models, update_dictionary)
         if self.VERBOSE:
             print("The error corrector models are initialized.")
@@ -683,14 +691,16 @@ class Correction:
                     self._to_model_adder(d.column_errors, cell[1], cell)
                 self._value_based_models_updater(d.value_models, update_dictionary)
                 self._domain_based_model_updater(d.domain_models, update_dictionary)
-                # 错误单元格使用整行清洗后的上下文，当前列自身仍需忽略。
-                update_dictionary["vicinity"] = [cv if j != cj else self.IGNORE_SIGN
-                                                 for cj, cv in enumerate(cleaned_sampled_tuple)]
-            else:
+                if self.USE_VICINITY_BASED_MODEL:
+                    # 错误单元格使用整行清洗后的上下文，当前列自身仍需忽略。
+                    update_dictionary["vicinity"] = [cv if j != cj else self.IGNORE_SIGN
+                                                     for cj, cv in enumerate(cleaned_sampled_tuple)]
+            elif self.USE_VICINITY_BASED_MODEL:
                 # 正确单元格只利用同一元组中被确认修复过的上下文，避免把未确认值作为强信号。
                 update_dictionary["vicinity"] = [cv if j != cj and d.labeled_cells[(d.sampled_tuple, cj)][0] == 1
                                                  else self.IGNORE_SIGN for cj, cv in enumerate(cleaned_sampled_tuple)]
-            self._vicinity_based_models_updater(d.vicinity_models, update_dictionary)
+            if self.USE_VICINITY_BASED_MODEL:
+                self._vicinity_based_models_updater(d.vicinity_models, update_dictionary)
         if self.VERBOSE:
             print("The error corrector models are updated with new labeled tuple {}.".format(d.sampled_tuple))
 
@@ -719,7 +729,9 @@ class Correction:
             error_dictionary = {"column": cell[1], "old_value": d.dataframe.iloc[cell], "vicinity": list(d.dataframe.iloc[cell[0], :])}
             # 三类模型分别生成候选修复，并把每个候选在各模型中的概率拼成特征向量。
             value_corrections = self._value_based_corrector(d.value_models, error_dictionary)
-            vicinity_corrections = self._vicinity_based_corrector(d.vicinity_models, error_dictionary)
+            vicinity_corrections = []
+            if self.USE_VICINITY_BASED_MODEL:
+                vicinity_corrections = self._vicinity_based_corrector(d.vicinity_models, error_dictionary)
             domain_corrections = self._domain_based_corrector(d.domain_models, error_dictionary)
             models_corrections = value_corrections + vicinity_corrections + domain_corrections
             corrections_features = {}

@@ -9,6 +9,7 @@ supplementaries/
 # Distribution / packaging
 .Python
 build/
+datasets/
 develop-eggs/
 dist/
 downloads/
