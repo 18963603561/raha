@@ -229,9 +229,9 @@ class Correction:
                             isinstance(n, mwparserfromhell.nodes.argument.Argument):
                         pass
                     else:
-                        sys.stderr.write("Inner layer unknown node found: {}, {}\n".format(type(n), n))
+                        sys.stderr.write("发现内层未知节点：{}，{}\n".format(type(n), n))
             else:
-                sys.stderr.write("Outer layer unknown node found: {}, {}\n".format(type(node), node))
+                sys.stderr.write("发现外层未知节点：{}，{}\n".format(type(node), node))
 
         try:
             parsed_wikitext = mwparserfromhell.parse(wikitext)
@@ -309,17 +309,17 @@ class Correction:
                         page_counter += 1
                         if self.VERBOSE and page_counter % 100 == 0:
                             for entry in revisions_list:
-                                print("----------Page Counter:---------\n", page_counter,
-                                      "\n----------Old Value:---------\n", entry["old_value"],
-                                      "\n----------New Value:---------\n", entry["new_value"],
-                                      "\n----------Left Context:---------\n", entry["left_context"],
-                                      "\n----------Right Context:---------\n", entry["right_context"],
+                                print("----------页面计数：---------\n", page_counter,
+                                      "\n----------旧值：---------\n", entry["old_value"],
+                                      "\n----------新值：---------\n", entry["new_value"],
+                                      "\n----------左侧上下文：---------\n", entry["left_context"],
+                                      "\n----------右侧上下文：---------\n", entry["right_context"],
                                       "\n==============================")
                         json.dump(revisions_list, open(os.path.join(rdd_folder_path, page_tree.id.text + ".json"), "w"))
             decompressed_dump_file.close()
             os.remove(decompressed_dump_file_path)
             if self.VERBOSE:
-                print("{} ({} / {}) is processed.".format(file_name, len(os.listdir(rd_folder_path)), len(compressed_dumps_list)))
+                print("{} 已处理（{} / {}）。".format(file_name, len(os.listdir(rd_folder_path)), len(compressed_dumps_list)))
 
     @staticmethod
     def _value_encoder(value, encoding):
@@ -428,7 +428,7 @@ class Correction:
                         if page_counter % 100000 == 0:
                             _models_pruner()
                             if self.VERBOSE:
-                                print(page_counter, "pages are processed.")
+                                print(page_counter, "个页面已处理。")
                         try:
                             # 单个页面修订 JSON 损坏时跳过，避免影响长时间批处理任务。
                             revision_list = json.load(io.open(os.path.join(rd_folder_path, folder, rf), encoding="utf-8"))
@@ -446,7 +446,7 @@ class Correction:
             pretrained_models_path = self.PRETRAINED_VALUE_BASED_MODELS_PATH
         pickle.dump(models, bz2.BZ2File(pretrained_models_path, "wb"))
         if self.VERBOSE:
-            print("The pretrained value-based models are stored in {}.".format(pretrained_models_path))
+            print("预训练的基于值的模型已存储到 {}。".format(pretrained_models_path))
 
     def _vicinity_based_models_updater(self, models, ud):
         """
@@ -588,7 +588,7 @@ class Correction:
             # 外部预训练模型是可选配置，存在时会增强 value-based 候选生成能力。
             d.value_models = pickle.load(bz2.BZ2File(self.PRETRAINED_VALUE_BASED_MODELS_PATH, "rb"))
             if self.VERBOSE:
-                print("The pretrained value-based models are loaded.")
+                print("已加载预训练的基于值的模型。")
         d.vicinity_models = {}
         if self.USE_VICINITY_BASED_MODEL:
             # 邻近上下文模型按“上下文列 -> 目标列”维护统计映射，关闭开关时不分配该结构。
@@ -613,7 +613,7 @@ class Correction:
                         self._vicinity_based_models_updater(d.vicinity_models, update_dictionary)
                     self._domain_based_model_updater(d.domain_models, update_dictionary)
         if self.VERBOSE:
-            print("The error corrector models are initialized.")
+            print("错误纠正模型已初始化。")
 
     def sample_tuple(self, d):
         """
@@ -643,7 +643,7 @@ class Correction:
                 tuple_score[cell[0]] *= column_score * cell_score
         d.sampled_tuple = numpy.random.choice(numpy.argwhere(tuple_score == numpy.amax(tuple_score)).flatten())
         if self.VERBOSE:
-            print("Tuple {} is sampled.".format(d.sampled_tuple))
+            print("已采样元组 {}。".format(d.sampled_tuple))
 
     def label_with_ground_truth(self, d):
         """
@@ -664,7 +664,7 @@ class Correction:
                 error_label = 1
             d.labeled_cells[cell] = [error_label, d.clean_dataframe.iloc[cell]]
         if self.VERBOSE:
-            print("Tuple {} is labeled.".format(d.sampled_tuple))
+            print("已标注元组 {}。".format(d.sampled_tuple))
 
     def update_models(self, d):
         """
@@ -702,7 +702,7 @@ class Correction:
             if self.USE_VICINITY_BASED_MODEL:
                 self._vicinity_based_models_updater(d.vicinity_models, update_dictionary)
         if self.VERBOSE:
-            print("The error corrector models are updated with new labeled tuple {}.".format(d.sampled_tuple))
+            print("错误纠正模型已使用新标注元组 {} 更新。".format(d.sampled_tuple))
 
     def _feature_generator_process(self, cell_list, dataset=None):
         """
@@ -765,6 +765,16 @@ class Correction:
         """
         if len(cells) == 0:
             yield {}, []
+        elif self.NUM_WORKERS <= 1:
+            # 小数据集或 Windows 调试场景下，单进程可避免反复启动 Python 子进程的固定开销。
+            pairs_counter = 0
+            process_args_generator = itertools.zip_longest(*[iter(cells)] * self.CHUNK_SIZE)
+            for cell_list in process_args_generator:
+                pairs_counter_out, pair_features_out, cell_list = self._feature_generator_process(cell_list, dataset=d)
+                pairs_counter += pairs_counter_out
+                yield pair_features_out, cell_list
+            if self.VERBOSE:
+                print("已为 {} 对“数据错误与候选纠正值”生成特征。".format(pairs_counter))
         else:
             # 特征生成是 CPU 密集型任务，按批次分发到多个进程并行处理。
             pool = Pool(max(self.NUM_WORKERS-1, 1), initargs=(d,), initializer=worker_init_feat_generation)
@@ -778,8 +788,9 @@ class Correction:
                 yield pair_features_out, cell_list
 
             pool.close()
+            pool.join()
             if self.VERBOSE:
-                print("{} pairs of (a data error, a potential correction) are featurized.".format(pairs_counter))
+                print("已为 {} 对“数据错误与候选纠正值”生成特征。".format(pairs_counter))
 
 
     def _prediction_process(self, cell_list, all_ones, all_zeros, dataset=None, cls_model=None):
@@ -850,6 +861,22 @@ class Correction:
             all_zeros：训练候选是否全为负类。
             all_ones：训练候选是否全为正类。
         """
+        if self.NUM_WORKERS <= 1:
+            # 单进程预测直接复用当前 Dataset 和分类器，避免为少量单元格创建进程池。
+            prediction_args_generator = itertools.zip_longest(*[iter(used_cells_test)] * self.CHUNK_SIZE)
+            for i, cell_list in enumerate(prediction_args_generator):
+                correction_dict = self._prediction_process(
+                    cell_list,
+                    all_zeros=all_zeros,
+                    all_ones=all_ones,
+                    dataset=d,
+                    cls_model=classification_model,
+                )
+                d.corrected_cells.update(correction_dict)
+                if self.VERBOSE:
+                    print(f"已预测纠正值：{i*self.CHUNK_SIZE}/{len(used_cells_test)}", end="\r")
+            return
+
         pool = Pool(self.NUM_WORKERS,initargs=(d,classification_model), initializer=worker_init_prediction)
 
         prediction_args_generator = itertools.zip_longest(*[iter(used_cells_test)] * self.CHUNK_SIZE)
@@ -859,9 +886,10 @@ class Correction:
         for i, correction_dict in enumerate(correction_iterator):
             d.corrected_cells.update(correction_dict)
             if self.VERBOSE:
-                print(f"{i*self.CHUNK_SIZE}/{len(used_cells_test)} predicted correction", end="\r")
+                print(f"已预测纠正值：{i*self.CHUNK_SIZE}/{len(used_cells_test)}", end="\r")
 
         pool.close()
+        pool.join()
 
     def predict_corrections(self, d):
         """
@@ -874,13 +902,13 @@ class Correction:
             无直接返回值，预测结果写入 d.corrected_cells。
         """
         if self.VERBOSE:
-            print("Predicting module...")
+            print("正在运行预测模块...")
 
         len_column_errors = len(d.column_errors)
         for column_idx, j in enumerate(d.column_errors):
             if self.VERBOSE:
                 print("------------------------------------------------------------------------")
-                print(f"{column_idx+1}/{len_column_errors} columns({d.dataframe.columns[j]})")
+                print(f"第 {column_idx+1}/{len_column_errors} 列（{d.dataframe.columns[j]}）")
             
             used_cells_train = []
             used_cells_test = []
@@ -897,12 +925,12 @@ class Correction:
             y_train = []
             
             if self.VERBOSE:
-                print(f"Generating train features({len(used_cells_train)}) ...")
+                print(f"正在生成训练特征（{len(used_cells_train)}）...")
 
             len_used_cells_train = len(used_cells_train)
             for k, (pair_features, cells) in enumerate(self.generate_features(d, used_cells_train)):
                 if self.VERBOSE:
-                    print(f"{(k)*self.CHUNK_SIZE}/{len_used_cells_train} creating train features",end="\r")
+                    print(f"正在创建训练特征：{(k)*self.CHUNK_SIZE}/{len_used_cells_train}", end="\r")
                 for cell in cells:
                     for correction, value in pair_features[cell].items():
                         x_train.append(value)
@@ -912,7 +940,7 @@ class Correction:
         
             if x_train:
                 if self.VERBOSE:
-                    print("Training classifier ...") 
+                    print("正在训练分类器...") 
                 # 按配置选择候选修复分类器；ABC 是默认配置，适合小样本启动。
                 if self.CLASSIFICATION_MODEL == "ABC":
                     classification_model = sklearn.ensemble.AdaBoostClassifier(n_estimators=100)
@@ -941,12 +969,12 @@ class Correction:
                     classification_model.fit(x_train, y_train)
 
                 if self.VERBOSE:
-                    print("Predicting corrections...")
+                    print("正在预测纠正值...")
 
                 self.predict_correction_multicore(classification_model, used_cells_test, d, all_zeros, all_ones)
 
         if self.VERBOSE:
-            print("{:.0f}% ({} / {}) of data errors are corrected.".format(100 * len(d.corrected_cells) / len(d.detected_cells),
+            print("{:.0f}%（{} / {}）的数据错误已纠正。".format(100 * len(d.corrected_cells) / len(d.detected_cells),
                                                                            len(d.corrected_cells), len(d.detected_cells)))
 
     def store_results(self, d):
@@ -965,7 +993,7 @@ class Correction:
         # 保存完整 Dataset，便于后续分析模型、标注状态和修复结果。
         pickle.dump(d, open(os.path.join(ec_folder_path, "correction.dataset"), "wb"))
         if self.VERBOSE:
-            print("The results are stored in {}.".format(os.path.join(ec_folder_path, "correction.dataset")))
+            print("结果已存储到 {}。".format(os.path.join(ec_folder_path, "correction.dataset")))
 
     def run(self, d):
         """
@@ -987,21 +1015,21 @@ class Correction:
         """
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "---------------------Initialize the Dataset Object----------------------\n"
+                  "----------------------------初始化数据集对象---------------------------\n"
                   "------------------------------------------------------------------------")
         d = self.initialize_dataset(d)
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "--------------------Initialize Error Corrector Models-------------------\n"
+                  "----------------------------初始化错误纠正模型-------------------------\n"
                   "------------------------------------------------------------------------")
         self.initialize_models(d)
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "--------------Iterative Tuple Sampling, Labeling, and Learning----------\n"
+                  "--------------------------迭代元组采样、标注与学习---------------------\n"
                   "------------------------------------------------------------------------")
         while len(d.labeled_tuples) < self.LABELING_BUDGET:
             if self.VERBOSE:
-                print(f"Label round {len(d.labeled_tuples)+1}/{self.LABELING_BUDGET}")
+                print(f"标注轮次 {len(d.labeled_tuples)+1}/{self.LABELING_BUDGET}")
             self.sample_tuple(d)
             if d.has_ground_truth:
                 # 有 clean_path 时自动标注，适合 benchmark 和回归测试。
@@ -1015,7 +1043,7 @@ class Correction:
         if self.SAVE_RESULTS:
             if self.VERBOSE:
                 print("------------------------------------------------------------------------\n"
-                      "---------------------------Storing the Results--------------------------\n"
+                      "-------------------------------存储结果--------------------------------\n"
                       "------------------------------------------------------------------------")
             self.store_results(d)
         return d.corrected_cells
@@ -1036,7 +1064,7 @@ if __name__ == "__main__":
     app = Correction()
     correction_dictionary = app.run(data)
     p, r, f = data.get_data_cleaning_evaluation(correction_dictionary)[-3:]
-    print("Baran's performance on {}:\nPrecision = {:.2f}\nRecall = {:.2f}\nF1 = {:.2f}".format(data.name, p, r, f))
+    print("Baran 在 {} 上的性能：\n精确率 = {:.2f}\n召回率 = {:.2f}\nF1 = {:.2f}".format(data.name, p, r, f))
     # --------------------离线预训练示例--------------------
     # 先从 Wikipedia 修订历史中抽取修复样本，再预训练 value-based 模型。
     # app.extract_revisions(wikipedia_dumps_folder="../wikipedia-data")

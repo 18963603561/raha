@@ -82,7 +82,7 @@ class Benchmark:
             sampling_range 控制聚合器标注预算。
         """
         print("------------------------------------------------------------------------\n"
-              "-----------------Experiment 1: Comparison with Baselines----------------\n"
+              "---------------------------实验 1：基线方法对比------------------------\n"
               "------------------------------------------------------------------------")
         # stand_alone_systems 对比独立错误检测工具与 Raha。
         stand_alone_systems = ["dBoost", "NADEEF", "KATARA", "ActiveClean", "Raha"]
@@ -196,13 +196,13 @@ class Benchmark:
                 f_list = f_scores[(aggregator_system, self.DATASETS[i])]
                 ax.plot([0] + sampling_range, [0 if aggregator_system != "Min-k" else f_list[0]] + f_list)
             ax.legend(aggregator_systems, bbox_to_anchor=(0.8, -0.07))
-        print("Comparison with the stand-alone error detection tools. (Precision, recall, f1 score)")
+        print("与独立错误检测工具对比。（精确率、召回率、F1 分数）")
         print(table_1)
-        print("Comparison in terms of detecting erroneous tuples. (Tuple-wise precision, recall, f1 score)")
+        print("按脏元组检测效果对比。（元组级精确率、召回率、F1 分数）")
         print(table_2)
-        print("Comparison with the error detection aggregators. (F1 score with the respective numbers of labeled tuples: {})".format(sampling_range))
+        print("与错误检测聚合器对比。（不同已标注元组数量 {} 下的 F1 分数）".format(sampling_range))
         print(table_3)
-        fig.suptitle("Comparison with the error detection aggregators.", fontsize=20)
+        fig.suptitle("与错误检测聚合器对比。", fontsize=20)
         matplotlib.pyplot.show()
 
     def experiment_2(self):
@@ -214,7 +214,7 @@ class Benchmark:
             DATASETS 控制参与数据集。
         """
         print("------------------------------------------------------------------------\n"
-              "------------------Experiment 2: Feature Impact Analysis-----------------\n"
+              "---------------------------实验 2：特征影响分析------------------------\n"
               "------------------------------------------------------------------------")
         # 每个特征配置通过修改 Detection.ERROR_DETECTION_ALGORITHMS 实现。
         feature_specifications = ["TF-IDF", "All - OD", "All - PVD", "All - RVD", "All - KBVD", "All"]
@@ -253,7 +253,7 @@ class Benchmark:
                 p, r, f = numpy.mean(numpy.array(results[feature_specification][dataset_name]), axis=0)
                 row.append("{:.2f}, {:.2f}, {:.2f}".format(p, r, f))
             table_1.add_row(row)
-        print("System effectiveness with different feature groups. (Precision, recall, f1 score)")
+        print("不同特征组下的系统效果。（精确率、召回率、F1 分数）")
         print(table_1)
 
     def experiment_3(self):
@@ -265,7 +265,7 @@ class Benchmark:
             sampling_approaches 控制均匀抽样和聚类抽样对比。
         """
         print("------------------------------------------------------------------------\n"
-              "-----------------Experiment 3: Sampling Impact Analysis-----------------\n"
+              "---------------------------实验 3：采样影响分析------------------------\n"
               "------------------------------------------------------------------------")
         # 比较不同标注预算下，随机抽样与聚类抽样对检测效果的影响。
         sampling_range = [5, 10, 15, 20, 25, 30]
@@ -311,9 +311,9 @@ class Benchmark:
                 f_list = f_scores[(sampling_approach, self.DATASETS[i])]
                 ax.plot([0] + sampling_range, [0] + f_list)
             ax.legend(sampling_approaches, bbox_to_anchor=(0.8, -0.07))
-        print("System effectiveness with different sampling approaches. (F1 score with the respective numbers of labeled tuples: {})".format(sampling_range))
+        print("不同采样方法下的系统效果。（不同已标注元组数量 {} 下的 F1 分数）".format(sampling_range))
         print(table_1)
-        fig.suptitle("System effectiveness with different sampling approaches.", fontsize=20)
+        fig.suptitle("不同采样方法下的系统效果。", fontsize=20)
         matplotlib.pyplot.show()
 
     def experiment_4(self):
@@ -325,7 +325,7 @@ class Benchmark:
             strategy_filtering_approaches 控制要比较的策略选择方式。
         """
         print("------------------------------------------------------------------------\n"
-              "------------Experiment 4: Strategy Filtering Impact Analysis------------\n"
+              "--------------------------实验 4：策略过滤影响分析---------------------\n"
               "------------------------------------------------------------------------")
         # historical_datasets 用于提前构建数据画像和策略效果画像。
         historical_datasets = ["hospital", "flights", "beers", "rayyan", "movies_1"]
@@ -420,9 +420,9 @@ class Benchmark:
                 ax.set_ylim([0.0, 1.0])
                 ax.grid(True)
                 ax.legend(strategy_filtering_approaches, bbox_to_anchor=(0.6, -0.07))
-        print("System performance with different strategy filtering approaches. (Precision, recall, f1 score, selected strategies count, and runtime (seconds))")
+        print("不同策略过滤方法下的系统性能。（精确率、召回率、F1 分数、已选策略数量、运行时间（秒））")
         print(table_1)
-        fig.suptitle("System performance with different strategy filtering approaches.", fontsize=20)
+        fig.suptitle("不同策略过滤方法下的系统性能。", fontsize=20)
         matplotlib.pyplot.show()
 
     def experiment_5(self):
@@ -434,7 +434,7 @@ class Benchmark:
             label_propagation_approaches 控制标签传播规则。
         """
         print("------------------------------------------------------------------------\n"
-              "------------Experiment 5: User Labeling Error Impact Analysis-----------\n"
+              "-----------------------实验 5：用户标注错误影响分析--------------------\n"
               "------------------------------------------------------------------------")
         # USER_LABELING_ACCURACY = 1 - 误标比例。
         user_labeling_error_range = [0.0, 0.02, 0.04, 0.06, 0.08, 0.1]
@@ -481,9 +481,9 @@ class Benchmark:
                 f_list = f_scores[(label_propagation_approaches[i], dataset_name)]
                 ax.plot([e * 100 for e in user_labeling_error_range], f_list)
             ax.legend(self.DATASETS, bbox_to_anchor=(0.8, -0.07))
-        print("System effectiveness in the presence of user. (F1 score with the respective user labeling error portions: {})".format(user_labeling_error_range))
+        print("存在用户标注错误时的系统效果。（不同用户标注错误比例 {} 下的 F1 分数）".format(user_labeling_error_range))
         print(table_1)
-        fig.suptitle("System effectiveness in the presence of user.", fontsize=20)
+        fig.suptitle("存在用户标注错误时的系统效果。", fontsize=20)
         matplotlib.pyplot.show()
 
     def experiment_6(self):
@@ -497,7 +497,7 @@ class Benchmark:
             该实验会临时创建 datasets/tax_<rows_count> 目录，结束后删除。
         """
         print("------------------------------------------------------------------------\n"
-              "--------------------Experiment 6: System Scalability--------------------\n"
+              "----------------------------实验 6：系统可扩展性-----------------------\n"
               "------------------------------------------------------------------------")
         # rows_counts 越大耗时越长，快速验证时可缩小该列表。
         rows_counts = [50000, 100000, 150000, 200000]
@@ -537,7 +537,7 @@ class Benchmark:
             aggregated_list = numpy.mean(numpy.array(results[rows_count]), axis=0)
             row = [rows_count, "{:.2f}".format(aggregated_list[2]), "{:.0f}".format(aggregated_list[3])]
             table_1.add_row(row)
-        print("System scalability with respect to the number of rows in tax dataset.")
+        print("系统相对于 tax 数据集行数的可扩展性。")
         print(table_1)
 
     def experiment_7(self):
@@ -549,7 +549,7 @@ class Benchmark:
             Detection.CLASSIFICATION_MODEL 的可选编码包括 ABC、DTC、GBC、GNB、SGDC、SVC。
         """
         print("------------------------------------------------------------------------\n"
-              "------------------Experiment 7: Feature Impact Analysis-----------------\n"
+              "--------------------------实验 7：分类模型影响分析---------------------\n"
               "------------------------------------------------------------------------")
         # 比较不同单元格错误分类器对 Raha 检测结果的影响。
         classification_models = ["AdaBoost", "Decision Tree", "Gradient Boosting", "Gaussian Naive Bayes",
@@ -588,7 +588,7 @@ class Benchmark:
                 p, r, f = numpy.mean(numpy.array(results[classification_model][dataset_name]), axis=0)
                 row.append("{:.2f}, {:.2f}, {:.2f}".format(p, r, f))
             table_1.add_row(row)
-        print("System effectiveness with different classification models. (Precision, recall, f1 score)")
+        print("不同分类模型下的系统效果。（精确率、召回率、F1 分数）")
         print(table_1)
 ########################################
 
@@ -614,7 +614,5 @@ if __name__ == "__main__":
     if "7" in sys.argv:
         app.experiment_7()
 ########################################
-
-
 
 

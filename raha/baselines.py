@@ -153,7 +153,7 @@ class Baselines:
         """
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "------------------------------Running dBoost----------------------------\n"
+                  "-------------------------------运行 dBoost-----------------------------\n"
                   "------------------------------------------------------------------------")
         d = raha.dataset.Dataset(dd)
         sp_folder_path = os.path.join(os.path.dirname(dd["path"]), "raha-baran-results-" + d.name, "strategy-profiling")
@@ -187,7 +187,7 @@ class Baselines:
         """
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "------------------------------Running NADEEF----------------------------\n"
+                  "-------------------------------运行 NADEEF-----------------------------\n"
                   "------------------------------------------------------------------------")
         d = raha.dataset.Dataset(dd)
         detection_dictionary = {}
@@ -229,7 +229,7 @@ class Baselines:
         """
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "------------------------------Running KATARA----------------------------\n"
+                  "-------------------------------运行 KATARA-----------------------------\n"
                   "------------------------------------------------------------------------")
         d = raha.dataset.Dataset(dd)
         sp_folder_path = os.path.join(os.path.dirname(dd["path"]), "raha-baran-results-" + d.name, "strategy-profiling")
@@ -255,7 +255,7 @@ class Baselines:
         """
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "----------------------------Running ActiveClean-------------------------\n"
+                  "----------------------------运行 ActiveClean---------------------------\n"
                   "------------------------------------------------------------------------")
         d = raha.dataset.Dataset(dd)
         actual_errors_dictionary = d.get_actual_errors_dictionary()
@@ -313,7 +313,7 @@ class Baselines:
         """
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "------------------------------Running Min-k-----------------------------\n"
+                  "-------------------------------运行 Min-k------------------------------\n"
                   "------------------------------------------------------------------------")
         d = raha.dataset.Dataset(dd)
         sp_folder_path = os.path.join(os.path.dirname(dd["path"]), "raha-baran-results-" + d.name, "strategy-profiling")
@@ -355,7 +355,7 @@ class Baselines:
         """
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "--------------------------Running Maximum Entropy-----------------------\n"
+                  "--------------------------运行 Maximum Entropy-------------------------\n"
                   "------------------------------------------------------------------------")
         d = raha.dataset.Dataset(dd)
         actual_errors_dictionary = d.get_actual_errors_dictionary()
@@ -397,7 +397,7 @@ class Baselines:
         """
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "--------------------------Running Metadata Driven-----------------------\n"
+                  "--------------------------运行 Metadata Driven-------------------------\n"
                   "------------------------------------------------------------------------")
         d = raha.dataset.Dataset(dd)
         actual_errors_dictionary = d.get_actual_errors_dictionary()

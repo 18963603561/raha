@@ -61,6 +61,10 @@ import tempfile
 import itertools
 import multiprocessing
 
+if __name__ == "__main__" and __package__ is None:
+    # 允许从项目根目录直接执行 python raha/detection.py。
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+
 import numpy
 import pandas
 import scipy.stats
@@ -109,7 +113,7 @@ class Detection:
         # 模拟用户标注准确率；1.0 表示完全相信真实标签，低于 1.0 会随机翻转部分标注。
         self.USER_LABELING_ACCURACY = 1.0
         # 是否输出详细过程信息，适合调试和理解流水线。
-        self.VERBOSE = False
+        self.VERBOSE = True
         # 是否把策略画像和检测结果保存到数据集旁边的结果目录。
         self.SAVE_RESULTS = True
         # 是否基于聚类结果选择下一条待标注元组；关闭后退化为随机抽样。
@@ -200,7 +204,7 @@ class Detection:
             pickle.dump(strategy_profile, open(os.path.join(d.results_folder, "strategy-profiling",
                                                             strategy_name_hash + ".dictionary"), "wb"))
         if self.VERBOSE:
-            print("{} cells are detected by {}.".format(len(detected_cells_list), strategy_name))
+            print("{} 个单元格被 {} 检测为候选错误。".format(len(detected_cells_list), strategy_name))
         return strategy_profile
 
     def initialize_dataset(self, dd):
@@ -219,9 +223,29 @@ class Detection:
         if self.SAVE_RESULTS and not os.path.exists(d.results_folder):
             os.mkdir(d.results_folder)
         # 以下容器可能由 notebook 交互流程预先写入，因此只在不存在时初始化。
+        # labeled_tuples {1030: 1,296: 1} 表示第 1030 行和第 296 行已经被标注过。
         d.labeled_tuples = {} if not hasattr(d, "labeled_tuples") else d.labeled_tuples
+        # labeled_cells (1030, 2): [1, "AA-1234"], (1030, 2): 第 1030 行、第 2 列是错误，纠正值是 "AA-1234"
+        # labeled_cells (1030, 3): [0, "7:10 a.m."] (1030, 3): 第 1030 行、第 3 列不是错误，原值保持 "7:10 a.m."
         d.labeled_cells = {} if not hasattr(d, "labeled_cells") else d.labeled_cells
+        # 记录每个聚类里面的标签情况，用于标签传播。
+        # #{0: {12: [1, "corrected value"],35: [1, "corrected value"]}}大致表示第 0 个聚类里有一些已经标注过的单元。
+        #d.labels_per_cluster = {
+        #    (列号, 聚类编号): {
+        #        (行号, 列号): 标签,
+        #        (行号, 列号): 标签,
+        #    }
+        #}
         d.labels_per_cluster = {} if not hasattr(d, "labels_per_cluster") else d.labels_per_cluster
+        #d.detected_cells = {
+        #    (1030, 2): "",
+        #    (296, 4): "",
+        #    (1526, 1): ""
+        #}
+        #含义是：
+        #第 1030 行第 2 列被检测为错误
+        #第 296 行第 4 列被检测为错误
+        #第 1526 行第 1 列被检测为错误
         d.detected_cells = {} if not hasattr(d, "detected_cells") else d.detected_cells
         return d
 
@@ -238,7 +262,7 @@ class Detection:
         sp_folder_path = os.path.join(d.results_folder, "strategy-profiling")
         if not self.STRATEGY_FILTERING:
             if os.path.exists(sp_folder_path):
-                sys.stderr.write("I just load strategies' results as they have already been run on the dataset!\n")
+                sys.stderr.write("由于这些检测策略已经在该数据集上执行过，因此直接加载它们的运行结果。\n")
                 # 结果目录存在时优先复用缓存，避免重复运行代价较高的基础检测器。
                 strategy_profiles_list = [pickle.load(open(os.path.join(sp_folder_path, strategy_file), "rb"))
                                           for strategy_file in os.listdir(sp_folder_path)]
@@ -295,7 +319,7 @@ class Detection:
             strategy_profiles_list = raha.utilities.get_selected_strategies_via_historical_data(d.dictionary, self.HISTORICAL_DATASETS)
         d.strategy_profiles = strategy_profiles_list
         if self.VERBOSE:
-            print("{} strategy profiles are collected.".format(len(d.strategy_profiles)))
+            print("已收集 {} 个策略画像。".format(len(d.strategy_profiles)))
 
     def generate_features(self, d):
         """
@@ -303,9 +327,21 @@ class Detection:
 
         输入：
             d：包含 strategy_profiles 的 Dataset 对象。
+            d.dataframe：pandas.DataFrame 二维表，行表示元组，列表示属性。
+                示例列为 tuple_id、src、flight、sched_dep_time；单元格用 (行索引, 列索引) 定位。
+            d.strategy_profiles：基础错误检测策略画像列表，每个元素是一个字典。
+                示例：
+                    {
+                        "name": "[\"PVD\", [\"flight\", \"-\"]]",
+                        "output": [(0, 2), (1, 2)],
+                        "runtime": 0.12
+                    }
+                其中 name 表示策略名称和配置，output 表示该策略命中的候选错误单元格。
 
         输出：
             无直接返回值，按列生成的特征矩阵会写入 d.column_features。
+            d.column_features[j] 是第 j 列的特征矩阵，行数等于 dataframe 行数，
+            列数等于有效策略特征数量；值为 1 表示对应策略命中该单元格，0 表示未命中。
         """
         columns_features_list = []
         for j in range(d.dataframe.shape[1]):
@@ -327,11 +363,13 @@ class Detection:
                 except:
                     # 空列或无法向量化的列不使用 TFIDF 特征，保留已有策略特征继续处理。
                     pass
-            # 移除所有行完全相同的特征列，避免后续聚类和分类被无信息特征干扰。
+            # 过滤无区分度特征列：如果某个特征在所有数据行上的值都相同，说明它无法区分正常值和错误值。
+            # 示例：某策略没有命中任何单元格时，该特征列全为 0；某策略命中当前列所有单元格时，该特征列全为 1。
             non_identical_columns = numpy.any(feature_vectors != feature_vectors[0, :], axis=0)
+            # 只保留至少有一行不同于首行的特征列，后续聚类和分类只使用有信息量的特征。
             feature_vectors = feature_vectors[:, non_identical_columns]
             if self.VERBOSE:
-                print("{} Features are generated for column {}.".format(feature_vectors.shape[1], j))
+                print("已为第 {} 列生成 {} 个特征。".format(j, feature_vectors.shape[1]))
             columns_features_list.append(feature_vectors)
         d.column_features = columns_features_list
 
@@ -348,7 +386,10 @@ class Detection:
         clustering_results = []
         for j in range(d.dataframe.shape[1]):
             feature_vectors = d.column_features[j]
+            # clusters_k_c_ce 按“簇数量 k -> 聚类编号 c -> 单元格 cell”保存当前列的聚类成员。
+            # k 从 2 到 LABELING_BUDGET + 1，表示不同标注轮次下尝试的最大簇数量。
             clusters_k_c_ce = {k: {} for k in range(2, self.LABELING_BUDGET + 2)}
+            # cells_clusters_k_ce 是反向索引，按“簇数量 k -> 单元格 cell -> 聚类编号 c”快速查询单元格所属簇。
             cells_clusters_k_ce = {k: {} for k in range(2, self.LABELING_BUDGET + 2)}
             try:
                 # 层次聚类按列构建，cosine 距离用于衡量策略命中特征的相似度。
@@ -366,7 +407,7 @@ class Detection:
                 # 特征为空或距离不可计算时，该列保留空聚类结构，后续流程会跳过。
                 pass
             if self.VERBOSE:
-                print("A hierarchical clustering model is built for column {}.".format(j))
+                print("已为第 {} 列构建层次聚类模型。".format(j))
             clustering_results.append([clusters_k_c_ce, cells_clusters_k_ce])
         # 按不同标注轮次 k 保存聚类结构，便于抽样阶段动态调整簇数量。
         d.clusters_k_j_c_ce = {k: {j: clustering_results[j][0][k] for j in range(d.dataframe.shape[1])} for k in
@@ -392,16 +433,21 @@ class Detection:
                                                 cell[0] in d.labeled_tuples}
         # --------------------抽样下一条元组--------------------
         if self.CLUSTERING_BASED_SAMPLING:
+            # tuple_score 保存每一行被抽样的权重；已标注行保持为 0，未标注行按所属簇的信息缺口计算权重。
             tuple_score = numpy.zeros(d.dataframe.shape[0])
             for i in range(d.dataframe.shape[0]):
                 if i not in d.labeled_tuples:
+                    # score 累加当前行各列所在簇的“缺少标注程度”，值越大表示该行越值得继续询问用户。
                     score = 0.0
                     for j in range(d.dataframe.shape[1]):
                         if d.clusters_k_j_c_ce[k][j]:
                             cell = (i, j)
+                            # 查询当前单元格在第 j 列、第 k 个聚类粒度下所属的簇编号。
                             c = d.cells_clusters_k_j_ce[k][j][cell]
                             # 标注较少的簇会得到更高分数，从而优先探索信息不足的区域。
+                            # len(labels_per_cluster[(j, c)]) 为该簇已有标注数：0 个标注贡献 exp(0)=1，1 个标注贡献 exp(-1)。
                             score += math.exp(-len(d.labels_per_cluster[(j, c)]))
+                    # 再做一次指数放大，让覆盖多个低标注簇的行拥有更高抽样概率。
                     tuple_score[i] = math.exp(score)
         else:
             # 非聚类模式不区分样本价值，所有未标注元组使用相同权重。
@@ -410,7 +456,7 @@ class Detection:
         p_tuple_score = tuple_score / sum_tuple_score
         d.sampled_tuple = numpy.random.choice(numpy.arange(d.dataframe.shape[0]), 1, p=p_tuple_score)[0]
         if self.VERBOSE:
-            print("Tuple {} is sampled.".format(d.sampled_tuple))
+            print("已采样元组 {}。".format(d.sampled_tuple))
 
     def label_with_ground_truth(self, d):
         """
@@ -427,16 +473,34 @@ class Detection:
         """
         k = len(d.labeled_tuples) + 2
         d.labeled_tuples[d.sampled_tuple] = 1
+        # actual_errors_dictionary 结构样例：
+        # {
+        #     (1030, 2): "AA-1234",
+        #     (1030, 5): "2011-04-03"
+        # }
+        # 键是错误单元格坐标 (行号, 列号)，值是 clean_dataframe 中对应的正确值。
         actual_errors_dictionary = d.get_actual_errors_dictionary()
+        # d.dataframe.shape[1] 表示列数；这里遍历当前抽样行 d.sampled_tuple 的每一列。
+        # 若 d.sampled_tuple = 1030 且共有 6 列，则 j 会依次取 0、1、2、3、4、5。
         for j in range(d.dataframe.shape[1]):
+            # cell 结构样例：(1030, 2)，表示第 1030 行、第 2 列的单元格。
             cell = (d.sampled_tuple, j)
+            # user_label 是模拟用户给出的错误标签：1 表示该单元格有错误，0 表示该单元格无错误。
+            # 当 cell 存在于 actual_errors_dictionary 中，说明 dirty.csv 和 clean.csv 在该位置不一致。
             user_label = int(cell in actual_errors_dictionary)
+            # USER_LABELING_ACCURACY 小于 1.0 时，按概率随机翻转标签，用于模拟人工误标。
             if random.random() > self.USER_LABELING_ACCURACY:
                 # 通过随机翻转模拟用户误标，便于评估标注噪声对结果的影响。
                 user_label = 1 - user_label
+            # d.labeled_cells 结构样例：
+            # {
+            #     (1030, 2): [1, "AA-1234"],
+            #     (1030, 3): [0, "7:10 a.m."]
+            # }
+            # 列表第 0 位是错误标签，第 1 位是 clean_dataframe 中的正确值或原值。
             d.labeled_cells[cell] = [user_label, d.clean_dataframe.iloc[cell]]
         if self.VERBOSE:
-            print("Tuple {} is labeled.".format(d.sampled_tuple))
+            print("已标注元组 {}。".format(d.sampled_tuple))
 
     def propagate_labels(self, d):
         """
@@ -449,31 +513,76 @@ class Detection:
             无直接返回值，扩展后的标签会写入 d.extended_labeled_cells。
         """
         # 先保留用户直接标注结果，后续传播只在此基础上增加标签。
+        # d.labeled_cells 结构样例：
+        # {
+        #     (1030, 2): [1, "AA-1234"],
+        #     (1030, 3): [0, "7:10 a.m."]
+        # }
+        # d.extended_labeled_cells 只保留标签位，结构样例：
+        # {
+        #     (1030, 2): 1,
+        #     (1030, 3): 0
+        # }
         d.extended_labeled_cells = {cell: d.labeled_cells[cell][0] for cell in d.labeled_cells}
+        # k 表示本轮标签传播使用的聚类粒度；已标注元组越多，使用的簇数量越多。
+        # 例如已标注 20 行时，k = 21，表示读取 d.clusters_k_j_c_ce[21] 和 d.cells_clusters_k_j_ce[21]。
         k = len(d.labeled_tuples) + 2 - 1
+        # 遍历当前抽样行的所有列，把刚标注的单元格写回其所属簇的标签索引。
         for j in range(d.dataframe.shape[1]):
+            # cell 结构样例：(1030, 2)，表示当前抽样行第 2 列的单元格。
             cell = (d.sampled_tuple, j)
+            # d.cells_clusters_k_j_ce 结构样例：
+            # {
+            #     21: {
+            #         2: {
+            #             (1030, 2): 5,
+            #             (1040, 2): 5
+            #         }
+            #     }
+            # }
+            # 含义是：在 k=21 的聚类粒度下，第 2 列的单元格 (1030, 2) 属于第 5 个簇。
             if cell in d.cells_clusters_k_j_ce[k][j]:
                 c = d.cells_clusters_k_j_ce[k][j][cell]
+                # d.labels_per_cluster 结构样例：
+                # {
+                #     (2, 5): {
+                #         (1030, 2): 1,
+                #         (1040, 2): 1
+                #     }
+                # }
+                # 键 (列号, 聚类编号) 定位一个簇，值记录该簇内已标注单元格的错误标签。
                 d.labels_per_cluster[(j, c)][cell] = d.labeled_cells[cell][0]
         if self.CLUSTERING_BASED_SAMPLING:
+            # d.clusters_k_j_c_ce 结构样例：
+            # {
+            #     21: {
+            #         2: {
+            #             5: [(1030, 2), (1040, 2), (1088, 2)]
+            #         }
+            #     }
+            # }
+            # 含义是：在 k=21 的聚类粒度下，第 2 列第 5 个簇包含这些单元格。
             for j in d.clusters_k_j_c_ce[k]:
                 for c in d.clusters_k_j_c_ce[k][j]:
+                    # 只有簇内至少存在一个已标注单元格时，才可能向该簇其他单元格传播标签。
                     if len(d.labels_per_cluster[(j, c)]) > 0:
                         if self.LABEL_PROPAGATION_METHOD == "homogeneity":
                             # homogeneity 只在簇内已标注样本完全一致时传播，精度更保守。
                             cluster_label = list(d.labels_per_cluster[(j, c)].values())[0]
+                            # 已标注标签全为 0 或全为 1 时，认为该簇标签同质，可以传播给整个簇。
                             if sum(d.labels_per_cluster[(j, c)].values()) in [0, len(d.labels_per_cluster[(j, c)])]:
                                 for cell in d.clusters_k_j_c_ce[k][j][c]:
+                                    # 将簇标签写入扩展标签集合；样例：(1088, 2): 1。
                                     d.extended_labeled_cells[cell] = cluster_label
                         elif self.LABEL_PROPAGATION_METHOD == "majority":
                             # majority 使用多数投票传播，覆盖更多单元格但更依赖聚类质量。
                             cluster_label = round(
                                 sum(d.labels_per_cluster[(j, c)].values()) / len(d.labels_per_cluster[(j, c)]))
                             for cell in d.clusters_k_j_c_ce[k][j][c]:
+                                # 将多数投票得到的标签写入扩展标签集合；样例：(1088, 2): 1。
                                 d.extended_labeled_cells[cell] = cluster_label
         if self.VERBOSE:
-            print("The number of labeled data cells increased from {} to {}.".format(len(d.labeled_cells), len(d.extended_labeled_cells)))
+            print("已标注数据单元数量从 {} 增加到 {}。".format(len(d.labeled_cells), len(d.extended_labeled_cells)))
 
     def predict_labels(self, d):
         """
@@ -521,7 +630,7 @@ class Detection:
                     # 直接标注为错误或模型预测为错误的单元格都会进入最终检测结果。
                     detected_cells_dictionary[(i, j)] = "JUST A DUMMY VALUE"
             if self.VERBOSE:
-                print("A classifier is trained and applied on column {}.".format(j))
+                print("已在第 {} 列训练并应用分类器。".format(j))
         d.detected_cells.update(detected_cells_dictionary)
 
     def store_results(self, d):
@@ -540,7 +649,7 @@ class Detection:
         # 保存完整 Dataset 便于后续分析策略输出、特征、聚类和最终检测结果。
         pickle.dump(d, open(os.path.join(ed_folder_path, "detection.dataset"), "wb"))
         if self.VERBOSE:
-            print("The results are stored in {}.".format(os.path.join(ed_folder_path, "detection.dataset")))
+            print("结果已存储到 {}。".format(os.path.join(ed_folder_path, "detection.dataset")))
 
     def run(self, dd):
         """
@@ -560,27 +669,27 @@ class Detection:
         """
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "---------------------Initializing the Dataset Object--------------------\n"
+                  "---------------------------初始化数据集对象----------------------------\n"
                   "------------------------------------------------------------------------")
         d = self.initialize_dataset(dd)
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "-------------------Running Error Detection Strategies-------------------\n"
+                  "---------------------------运行错误检测策略----------------------------\n"
                   "------------------------------------------------------------------------")
         self.run_strategies(d)
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "-----------------------Generating Feature Vectors-----------------------\n"
+                  "-----------------------------生成特征向量------------------------------\n"
                   "------------------------------------------------------------------------")
         self.generate_features(d)
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "---------------Building the Hierarchical Clustering Model---------------\n"
+                  "---------------------------构建层次聚类模型----------------------------\n"
                   "------------------------------------------------------------------------")
         self.build_clusters(d)
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "-------------Iterative Clustering-Based Sampling and Labeling-----------\n"
+                  "------------------------迭代聚类采样与数据标注-------------------------\n"
                   "------------------------------------------------------------------------")
         while len(d.labeled_tuples) < self.LABELING_BUDGET:
             self.sample_tuple(d)
@@ -593,18 +702,18 @@ class Detection:
                 print("------------------------------------------------------------------------")
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "--------------Propagating User Labels Through the Clusters--------------\n"
+                  "----------------------------通过聚类传播标签---------------------------\n"
                   "------------------------------------------------------------------------")
         self.propagate_labels(d)
         if self.VERBOSE:
             print("------------------------------------------------------------------------\n"
-                  "---------------Training and Testing Classification Models---------------\n"
+                  "--------------------------训练并测试分类模型---------------------------\n"
                   "------------------------------------------------------------------------")
         self.predict_labels(d)
         if self.SAVE_RESULTS:
             if self.VERBOSE:
                 print("------------------------------------------------------------------------\n"
-                      "---------------------------Storing the Results--------------------------\n"
+                      "-------------------------------存储结果--------------------------------\n"
                       "------------------------------------------------------------------------")
             self.store_results(d)
         return d.detected_cells
@@ -624,7 +733,7 @@ if __name__ == "__main__":
     detection_dictionary = app.run(dataset_dictionary)
     data = raha.dataset.Dataset(dataset_dictionary)
     p, r, f = data.get_data_cleaning_evaluation(detection_dictionary)[:3]
-    print("Raha's performance on {}:\nPrecision = {:.2f}\nRecall = {:.2f}\nF1 = {:.2f}".format(data.name, p, r, f))
+    print("Raha 在 {} 上的性能：\n精确率 = {:.2f}\n召回率 = {:.2f}\nF1 = {:.2f}".format(data.name, p, r, f))
     # --------------------历史数据策略过滤示例--------------------
     # 以下代码展示如何开启历史数据策略过滤。
     # app.STRATEGY_FILTERING = True
